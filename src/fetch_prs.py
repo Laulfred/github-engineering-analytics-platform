@@ -1,8 +1,10 @@
+import json
 import logging
 import os
 import requests
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
+from pathlib import Path
 
 logging.basicConfig(
     level = logging.INFO, # switch to DEBUG when needed
@@ -65,6 +67,22 @@ def transform_prs(raw_prs):
         slim_prs.append(slim_pr)
     return slim_prs
 
+def write_prs(data, repo):
+    now = datetime.now(timezone.utc)
+    formatted_now = now.strftime("%Y%m%dT%H%M%S")
+
+    directory = Path('data/raw')
+    directory.mkdir(parents=True, exist_ok=True)
+    filename = f'{repo}_{formatted_now}.json'
+    fullpath = directory/filename
+
+    with open(fullpath, 'w') as file:
+        json.dump(data, file, indent=4)
+
+    logger.info('Wrote to file %s', fullpath)
+    return fullpath
+
+
 if __name__ == '__main__':
     load_dotenv()
 
@@ -80,3 +98,5 @@ if __name__ == '__main__':
     slim_prs = transform_prs(results)
     logger.info('Transformed %d Slim PRs', len(slim_prs))
     logger.debug(slim_prs[0])
+
+    path = write_prs(repo, slim_prs)
