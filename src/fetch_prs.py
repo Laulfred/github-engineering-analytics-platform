@@ -1,7 +1,9 @@
 import json
 import logging
 import os
+import random
 import requests
+import time
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from pathlib import Path
@@ -25,7 +27,7 @@ def fetch_prs(token, owner, repo, days_back=365):
     }
     url = f'https://api.github.com/repos/{owner}/{repo}/pulls?per_page=100&state=all&sort=updated&direction=desc'
     while url:
-        response = requests.get(url, headers=headers)
+        response = fetch_with_retry(url, headers)
         logger.debug(response.url)
         if response.status_code != 200:
             logger.error('Status Code: %d', response.status_code)
@@ -44,6 +46,30 @@ def fetch_prs(token, owner, repo, days_back=365):
         else:
             url = None
     return results
+
+# fetch with catch and retry implemented
+
+def fetch_with_retry(url, headers):
+    base_delay = 1
+    max_retries = 5
+    last_err = None
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, headers=headers, timeout=(3.0, 10.0))
+            return response
+        except requests.exceptions.RequestException as err:
+
+            # Calculate exponential delay: base_delay * 2^attempt
+            sleep_time = base_delay * (2 ** attempt)
+
+            # Add random jitter to prevent thundering herd problems
+            sleep_time += random.uniform(0, 1)
+
+            last_err = err
+            logger.warning('Attempt: %d, Sleep Time: %.1f, Error: %s', attempt + 1, sleep_time, last_err)
+            time.sleep(sleep_time)
+    logger.error('A request error occurred: %s', last_err)
+    raise last_err
 
 # transform function for desired fields (slim_prs)
 
@@ -99,4 +125,4 @@ if __name__ == '__main__':
     logger.info('Transformed %d Slim PRs', len(slim_prs))
     logger.debug(slim_prs[0])
 
-    path = write_prs(repo, slim_prs)
+    path = write_prs(data=slim_prs, repo=repo)
